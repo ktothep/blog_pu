@@ -1,7 +1,7 @@
 import os
 
 import anthropic
-from fastapi import HTTPException, APIRouter, Form
+from fastapi import HTTPException, APIRouter, Form, Request
 from starlette.responses import HTMLResponse
 
 from api.limiter import limiter
@@ -21,7 +21,7 @@ RULES:
 
 @route_tailor.post("/path/v1/optimize-resume")
 @limiter.limit("2/hour")
-async def optimize_resume(job_url: str = Form(...), resume_text: str = Form(...)):
+async def optimize_resume(request: Request, job_url: str = Form(...), resume_text: str = Form(...)):
     try:
         job_description = visit_link_scrap(job_url)
         if not job_description:
