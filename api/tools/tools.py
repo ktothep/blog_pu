@@ -1,6 +1,6 @@
 import io
 
-
+import docx
 import requests
 from bs4 import BeautifulSoup
 import PyPDF2
@@ -66,10 +66,9 @@ def extract_text_from_file(file_bytes: bytes, filename: str) -> str:
                 text += page.extract_text() + "\n"
             return text
 
-        #elif ext == 'docx':
-        #    doc = docx.Document(io.BytesIO(file_bytes))
-
-        #    return "\n".join([para.text for para in doc.paragraphs])
+        elif ext == 'docx':
+            doc = docx.Document(io.BytesIO(file_bytes))
+            return "\n".join([para.text for para in doc.paragraphs])
 
         elif ext == 'txt':
             return file_bytes.decode('utf-8')

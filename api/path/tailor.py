@@ -81,7 +81,7 @@ async def optimize_resume(job_url: str = Form(...),resume_file: UploadFile = Fil
 @route_tailor.get("/")
 async def serve_ui():
     html_content = """
-    <!DOCTYPE html>
+  <!DOCTYPE html>
     <html lang="en">
     <head>
         <meta charset="UTF-8">
@@ -93,33 +93,32 @@ async def serve_ui():
     <body class="bg-gray-50 min-h-screen p-8 font-sans">
         <div class="max-w-3xl mx-auto bg-white p-8 rounded-xl shadow-lg border border-gray-100">
             <h1 class="text-3xl font-bold text-gray-800 mb-2">AI Resume Tailor</h1>
-            <p class="text-gray-500 mb-8">Upload your base resume and a job URL to get a perfectly optimized ATS match.</p>
+            <p class="text-gray-500 mb-8">Upload your resume and a job URL to get a perfectly optimized match.</p>
 
             <form id="resumeForm" class="space-y-6">
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-2">Job Posting URL</label>
                     <input type="url" id="jobUrl" required placeholder="https://linkedin.com/jobs/..." 
-                           class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all">
+                           class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none">
                 </div>
 
                 <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-2">Your Current Resume (PDF/TXT/DOCX)</label>
-                    <input type="file" id="resumeFile" required accept=".pdf,.txt,.docx"
-                           class="w-full px-4 py-2 border border-gray-300 rounded-lg file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 transition-all">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Your Current Resume (PDF/TXT)</label>
+                    <input type="file" id="resumeFile" required accept=".pdf,.txt"
+                           class="w-full px-4 py-2 border border-gray-300 rounded-lg file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700">
                 </div>
 
                 <button type="submit" id="submitBtn" 
-                        class="w-full bg-blue-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-blue-700 transition-colors flex justify-center items-center">
-                    <span>Optimize Resume</span>
+                        class="w-full bg-blue-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-blue-700 transition-colors">
+                    Optimize Resume
                 </button>
             </form>
 
             <div id="loading" class="hidden mt-8 text-center text-blue-600 font-medium animate-pulse">
-                Analyzing requirements and tailoring your resume... This takes about 15-20 seconds.
+                Processing document and generating tailored resume... (20-30s)
             </div>
 
             <div id="results" class="hidden mt-10 pt-8 border-t border-gray-200">
-                <div id="feedbackBox" class="p-4 rounded-lg mb-6"></div>
                 <div id="markdownOutput" class="prose max-w-none bg-gray-50 p-6 rounded-lg border border-gray-200"></div>
             </div>
         </div>
@@ -127,54 +126,41 @@ async def serve_ui():
         <script>
             document.getElementById('resumeForm').addEventListener('submit', async (e) => {
                 e.preventDefault();
-
                 const btn = document.getElementById('submitBtn');
                 const loading = document.getElementById('loading');
                 const results = document.getElementById('results');
-                const feedbackBox = document.getElementById('feedbackBox');
                 const markdownOutput = document.getElementById('markdownOutput');
 
-                // UI State: Loading
                 btn.disabled = true;
-                btn.classList.add('opacity-50');
                 loading.classList.remove('hidden');
                 results.classList.add('hidden');
 
-                // Prepare the data
-                const formData = new FormData();
-                formData.append('job_url', document.getElementById('jobUrl').value);
-                formData.append('resume_file', document.getElementById('resumeFile').files[0]);
-
                 try {
-                    // Send it to your FastAPI backend
-                    const response = await fetch('/api/v1/optimize-resume', {
-                        method: 'POST',
-                        body: formData
-                    });
+                    // STEP 1: Call the separate Parser endpoint
+                    const parserData = new FormData();
+                    parserData.append('resume_file', document.getElementById('resumeFile').files[0]);
+                    
+                    const parseResponse = await fetch('/api/parser', { method: 'POST', body: parserData });
+                    if (!parseResponse.ok) throw new Error("Document parsing failed.");
+                    const { resume_text } = await parseResponse.json();
 
+                    // STEP 2: Call this Agent Brain endpoint with the extracted text
+                    const agentData = new FormData();
+                    agentData.append('job_url', document.getElementById('jobUrl').value);
+                    agentData.append('resume_text', resume_text);
+
+                    const response = await fetch('/api/v1/optimize-resume', { method: 'POST', body: agentData });
                     const data = await response.json();
+                    if (!response.ok) throw new Error(data.detail || 'Optimization failed.');
 
-                    if (!response.ok) throw new Error(data.detail || 'Something went wrong');
-
-                    // UI State: Success / Render Results
+                    // Display Result
                     results.classList.remove('hidden');
-
-                    if (data.is_match) {
-                        feedbackBox.className = "p-4 rounded-lg mb-6 bg-green-50 text-green-800 border border-green-200";
-                        feedbackBox.innerHTML = `<strong>Great Fit!</strong> ${data.feedback}`;
-                        markdownOutput.innerHTML = marked.parse(data.markdown_resume);
-                    } else {
-                        feedbackBox.className = "p-4 rounded-lg mb-6 bg-yellow-50 text-yellow-800 border border-yellow-200";
-                        feedbackBox.innerHTML = `<strong>Missing Requirements:</strong> ${data.feedback}`;
-                        markdownOutput.innerHTML = "<p class='text-gray-500 italic'>No resume generated due to skill mismatch.</p>";
-                    }
+                    markdownOutput.innerHTML = marked.parse(data.markdown_resume);
 
                 } catch (error) {
                     alert('Error: ' + error.message);
                 } finally {
-                    // UI State: Reset
                     btn.disabled = false;
-                    btn.classList.remove('opacity-50');
                     loading.classList.add('hidden');
                 }
             });
@@ -182,4 +168,5 @@ async def serve_ui():
     </body>
     </html>
     """
+
     return HTMLResponse(content=html_content)
