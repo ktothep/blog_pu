@@ -11,6 +11,7 @@ app = FastAPI()
 @app.post("/api/parser")
 async def parse_document(resume_file: UploadFile = File(...)):
     try:
+
         file_bytes = await resume_file.read()
         filename = resume_file.filename.lower()
 
