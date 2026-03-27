@@ -1,7 +1,6 @@
 {
   "rewrites": [
-    { "source": "/api/parser", "destination": "/api/index.py" },
-    { "source": "/api/v1/optimize-resume", "destination": "/api/index.py" },
+    { "source": "/api/optimize", "destination": "/api/index.py" },
     { "source": "/", "destination": "/api/index.py" }
   ]
 }
