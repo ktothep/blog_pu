@@ -4,7 +4,7 @@ from fastapi import HTTPException, APIRouter, Form, UploadFile, File
 from pydantic import BaseModel
 from google.genai import types
 
-from api.main import limiter
+from api.index import limiter
 from api.runner import runner, session_service
 from api.tools.tools import extract_text_from_file
 
