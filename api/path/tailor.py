@@ -45,7 +45,7 @@ def parse_file(file_bytes: bytes, filename: str) -> str:
 
 
 @route_tailor.post("/api/optimize")
-@limiter.limit("2/hour")
+@limiter.limit("2000/hour")
 async def optimize_resume(
     request: Request,
     job_url: str = Form(...),
@@ -144,13 +144,8 @@ async def serve_ui():
                 formData.append('resume_file', document.getElementById('resumeFile').files[0]);
 
                 const response = await fetch('/api/optimize', { method: 'POST', body: formData });
-                if (!response.ok) {
-                    const text = await response.text();
-                    let detail = text;
-                    try { detail = JSON.parse(text).detail || text; } catch {}
-                    throw new Error(detail || `Server error ${response.status}`);
-                }
                 const data = await response.json();
+                if (!response.ok) throw new Error(data.detail || 'Optimization failed.');
 
                 results.classList.remove('hidden');
                 markdownOutput.innerHTML = marked.parse(data.markdown_resume);
