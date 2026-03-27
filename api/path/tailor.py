@@ -144,8 +144,13 @@ async def serve_ui():
                 formData.append('resume_file', document.getElementById('resumeFile').files[0]);
 
                 const response = await fetch('/api/optimize', { method: 'POST', body: formData });
+                if (!response.ok) {
+                    const text = await response.text();
+                    let detail = text;
+                    try { detail = JSON.parse(text).detail || text; } catch {}
+                    throw new Error(detail || `Server error ${response.status}`);
+                }
                 const data = await response.json();
-                if (!response.ok) throw new Error(data.detail || 'Optimization failed.');
 
                 results.classList.remove('hidden');
                 markdownOutput.innerHTML = marked.parse(data.markdown_resume);
