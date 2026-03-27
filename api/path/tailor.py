@@ -4,7 +4,7 @@ import anthropic
 from fastapi import HTTPException, APIRouter, Form
 from starlette.responses import HTMLResponse
 
-from api.index import limiter
+from api.limiter import limiter
 from api.tools.tools import visit_link_scrap
 
 route_tailor = APIRouter()
