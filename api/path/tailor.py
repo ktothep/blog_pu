@@ -3,6 +3,7 @@ import uuid
 from fastapi import HTTPException, APIRouter, Form, UploadFile, File
 from pydantic import BaseModel
 from google.genai import types
+from starlette.responses import HTMLResponse
 
 from api.index import limiter
 from api.runner import runner, session_service
@@ -20,7 +21,7 @@ class OptimizationRequest(BaseModel):
 
 # 5. Create the API Endpoint
 @route_tailor.post("/path/v1/optimize-resume")
-@limiter.limit("3/minute")
+@limiter.limit("2/hour")
 async def optimize_resume(job_url: str = Form(...),resume_file: UploadFile = File(...)):
     try:
         # 1. Read the uploaded file into memory
