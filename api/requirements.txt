@@ -2,9 +2,8 @@ fastapi
 uvicorn
 python-multipart
 PyPDF2
-google-adk
-litellm
-sqlalchemy
-psycopg2-binary
+anthropic
 slowapi
 redis
+requests
+beautifulsoup4

@@ -2,9 +2,9 @@ import os
 
 from dotenv import load_dotenv
 from fastapi import FastAPI
-from flask_limiter import Limiter, RateLimitExceeded
-from flask_limiter.util import get_remote_address
 from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.util import get_remote_address
 from slowapi.middleware import SlowAPIMiddleware
 
 from path.tailor import route_tailor

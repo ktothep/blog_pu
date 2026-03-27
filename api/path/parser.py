@@ -6,7 +6,6 @@ from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI()
 
-# Enable CORS so your frontend/main API can talk to it
 
 
 @app.post("/api/parser")
