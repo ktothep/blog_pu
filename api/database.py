@@ -1,45 +1,34 @@
 import os
-
-from sqlalchemy import create_engine, Column, Integer, String, DateTime, Text
-from sqlalchemy.orm import declarative_base, sessionmaker
 from datetime import datetime, timezone
 
-DATABASE_URL = os.getenv("DB_URL")
+from supabase import create_client
 
-engine = create_engine(DATABASE_URL)
-SessionLocal = sessionmaker(bind=engine)
-Base = declarative_base()
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 
 
-class Interaction(Base):
-    __tablename__ = "interactions"
-
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    timestamp = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
-    job_url = Column(Text, nullable=False)
-    filename = Column(String(255), nullable=True)
-    resume_text = Column(Text, nullable=True)
-    status = Column(String(50), nullable=False)  # "success" or "error"
-    error_message = Column(Text, nullable=True)
+def _get_client():
+    if not SUPABASE_URL or not SUPABASE_KEY:
+        return None
+    return create_client(SUPABASE_URL, SUPABASE_KEY)
 
 
 def init_db():
-    Base.metadata.create_all(bind=engine)
+    pass  # Table is created manually in Supabase SQL editor
 
 
 def log_interaction(job_url: str, filename: str, resume_text: str, status: str, error_message: str = None):
-    db = SessionLocal()
+    client = _get_client()
+    if not client:
+        return
     try:
-        record = Interaction(
-            job_url=job_url,
-            filename=filename,
-            resume_text=resume_text,
-            status=status,
-            error_message=error_message
-        )
-        db.add(record)
-        db.commit()
+        client.table("interactions").insert({
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "job_url": job_url,
+            "filename": filename,
+            "resume_text": resume_text,
+            "status": status,
+            "error_message": error_message,
+        }).execute()
     except Exception:
-        db.rollback()
-    finally:
-        db.close()
+        pass
