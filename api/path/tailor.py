@@ -76,6 +76,24 @@ def parse_file(file_bytes: bytes, filename: str) -> str:
         raise ValueError("Only PDF and TXT files are supported.")
 
 
+TOOLS = [
+    {
+        "name": "scrape_job_url",
+        "description": "Fetches and extracts the plain text content of a job posting URL. Call this first to retrieve the job description before tailoring the resume.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "url": {
+                    "type": "string",
+                    "description": "The URL of the job posting to scrape."
+                }
+            },
+            "required": ["url"]
+        }
+    }
+]
+
+
 @route_tailor.post("/api/optimize")
 @limiter.limit("2/hour")
 async def optimize_resume(
@@ -93,22 +111,50 @@ async def optimize_resume(
         if not resume_text.strip():
             raise HTTPException(status_code=400, detail="Could not extract text from the uploaded file.")
 
-        job_description = scrape_url(job_url)
-        if not job_description:
-            raise HTTPException(status_code=400, detail="Could not fetch job description from the provided URL.")
-
         client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
-        message = client.messages.create(
-            model="claude-3-haiku-20240307",
-            max_tokens=4096,
-            system=SYSTEM_PROMPT,
-            messages=[{
+        messages = [
+            {
                 "role": "user",
-                "content": f"Job Description:\n{job_description}\n\nMy Current Resume:\n{resume_text}"
-            }]
-        )
+                "content": f"Please tailor my resume for this job posting: {job_url}\n\nHere is my current resume:\n\n{resume_text}"
+            }
+        ]
 
-        return {"status": "success", "markdown_resume": message.content[0].text}
+        # Agentic loop — Claude calls scrape_job_url tool, we execute it, then Claude writes the resume
+        while True:
+            response = client.messages.create(
+                model="claude-3-haiku-20240307",
+                max_tokens=4096,
+                system=SYSTEM_PROMPT,
+                tools=TOOLS,
+                messages=messages
+            )
+
+            if response.stop_reason == "tool_use":
+                tool_use_block = next(b for b in response.content if b.type == "tool_use")
+                url_to_scrape = tool_use_block.input["url"]
+                job_description = scrape_url(url_to_scrape)
+
+                if not job_description:
+                    job_description = "Could not retrieve the job description from this URL. Please tailor the resume based on the URL context and any visible keywords."
+
+                messages.append({"role": "assistant", "content": response.content})
+                messages.append({
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "tool_result",
+                            "tool_use_id": tool_use_block.id,
+                            "content": job_description
+                        }
+                    ]
+                })
+
+            elif response.stop_reason == "end_turn":
+                final_text = next(b.text for b in response.content if hasattr(b, "text"))
+                return {"status": "success", "markdown_resume": final_text}
+
+            else:
+                raise HTTPException(status_code=500, detail=f"Unexpected stop reason: {response.stop_reason}")
 
     except HTTPException:
         raise
@@ -182,6 +228,7 @@ async def serve_ui():
                     const text = await response.text();
                     let msg = `Server error ${response.status}`;
                     try { msg = JSON.parse(text).detail || msg; } catch {}
+                    if (response.status === 429) msg = "You've used your 2 free optimizations for this hour. Please try again later.";
                     throw new Error(msg);
                 }
                 const data = await response.json();
