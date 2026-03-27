@@ -77,7 +77,7 @@ def parse_file(file_bytes: bytes, filename: str) -> str:
 
 
 @route_tailor.post("/api/optimize")
-@limiter.limit("2000/hour")
+@limiter.limit("2/hour")
 async def optimize_resume(
     request: Request,
     job_url: str = Form(...),
