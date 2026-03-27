@@ -1,79 +1,54 @@
-import uuid
+import os
 
-from fastapi import HTTPException, APIRouter, Form, UploadFile, File
-from pydantic import BaseModel
-from google.genai import types
+import anthropic
+from fastapi import HTTPException, APIRouter, Form
 from starlette.responses import HTMLResponse
 
 from api.index import limiter
-from api.runner import runner, session_service
-from api.tools.tools import extract_text_from_file
+from api.tools.tools import visit_link_scrap
 
-# 1. Initialize FastAPI
+route_tailor = APIRouter()
+
+SYSTEM_PROMPT = """You are an expert ATS resume writer. Your ONLY job is to output a fully rewritten, tailored resume in Markdown format.
+
+RULES:
+1. Rewrite the user's resume to highlight matching skills and keywords from the job description.
+2. CRITICAL: Do NOT hallucinate or invent experience the user does not have.
+3. CRITICAL: Do NOT output advice, tips, cover letters, or a summary of the job description.
+4. Your entire response MUST be the final Markdown resume, starting directly with the user's name and contact info.
+5. If the job description requires a specific technology (e.g., Async Python) and the user has used a directly related framework (e.g., FastAPI, which is inherently async), you MAY explicitly name the required technology to optimize for ATS algorithms. However, do not invent entire roles or completely unrelated skills."""
 
 
-route_tailor=APIRouter()
-# 2. Define the exact data structure we expect from the frontend
-class OptimizationRequest(BaseModel):
-    job_url: str
-    resume_text: str
-
-
-# 5. Create the API Endpoint
 @route_tailor.post("/path/v1/optimize-resume")
 @limiter.limit("2/hour")
-async def optimize_resume(job_url: str = Form(...),resume_file: UploadFile = File(...)):
+async def optimize_resume(job_url: str = Form(...), resume_text: str = Form(...)):
     try:
-        # 1. Read the uploaded file into memory
-        file_bytes = await resume_file.read()
+        job_description = visit_link_scrap(job_url)
+        if not job_description:
+            raise HTTPException(status_code=400, detail="Could not fetch job description from the provided URL.")
 
-        # 2. Extract the text based on file type
-        try:
-            resume_text = extract_text_from_file(file_bytes, resume_file.filename)
-        except ValueError as ve:
-            raise HTTPException(status_code=400, detail=str(ve))
+        client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
 
-        if not resume_text.strip():
-            raise HTTPException(status_code=400, detail="Could not extract any text from the document.")
-
-        # 3. Construct the prompt
-        prompt = f"""
-            Please tailor my resume for this job: {job_url}
-
-            Here is my current resume:
-            {resume_text}
-            """
-
-        # 4. Execute the ADK agent
-        content = types.Content(
-            role='user',
-            parts=[types.Part.from_text(text=prompt)]
+        message = client.messages.create(
+            model="claude-3-haiku-20240307",
+            max_tokens=4096,
+            system=SYSTEM_PROMPT,
+            messages=[
+                {
+                    "role": "user",
+                    "content": f"Job Description:\n{job_description}\n\nMy Current Resume:\n{resume_text}"
+                }
+            ]
         )
-        user_id = "api_user"
-        # 2. Generate a unique session ID per request so users don't overwrite each other
-        session_id = str(uuid.uuid4())
-        session_service.create_session(user_id=user_id, session_id=session_id,app_name=runner.app_name)
-        final_markdown = ""
 
-        async for event in runner.run_async(
-                user_id="api_user",
-                session_id=session_id,
-                new_message=content
-        ):
-            # The runner emits various events (tool calls, reasoning, etc.)
-            # We only care about the final text output for this specific API response.
-            if event.is_final_response():
-                if event.content and event.content.parts:
-                    final_markdown = event.content.parts[0].text
-                elif event.actions and event.actions.escalate:
-                    raise Exception(f"Agent escalated: {event.error_message}")
-                break
+        final_markdown = message.content[0].text
 
         return {
             "status": "success",
-            "filename_processed": resume_file.filename,
             "markdown_resume": final_markdown
         }
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -98,7 +73,7 @@ async def serve_ui():
             <form id="resumeForm" class="space-y-6">
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-2">Job Posting URL</label>
-                    <input type="url" id="jobUrl" required placeholder="https://linkedin.com/jobs/..." 
+                    <input type="url" id="jobUrl" required placeholder="https://linkedin.com/jobs/..."
                            class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none">
                 </div>
 
@@ -108,7 +83,7 @@ async def serve_ui():
                            class="w-full px-4 py-2 border border-gray-300 rounded-lg file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700">
                 </div>
 
-                <button type="submit" id="submitBtn" 
+                <button type="submit" id="submitBtn"
                         class="w-full bg-blue-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-blue-700 transition-colors">
                     Optimize Resume
                 </button>
@@ -139,7 +114,7 @@ async def serve_ui():
                     // STEP 1: Call the separate Parser endpoint
                     const parserData = new FormData();
                     parserData.append('resume_file', document.getElementById('resumeFile').files[0]);
-                    
+
                     const parseResponse = await fetch('/api/parser', { method: 'POST', body: parserData });
                     if (!parseResponse.ok) throw new Error("Document parsing failed.");
                     const { resume_text } = await parseResponse.json();
