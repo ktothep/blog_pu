@@ -22,7 +22,7 @@ Your ONLY output must be the complete, rewritten resume in Markdown. No preamble
    - Required and preferred skills, tools, and technologies
    - Key responsibilities and deliverables
    - Seniority level and leadership expectations
-   - Industry-specific keywords and phrases the ATS will scan for
+   - Exact keywords and phrases the ATS will scan for
 
 2. **Audit the candidate's resume** — identify:
    - Strongest experiences that map to the role
@@ -36,10 +36,10 @@ Your ONLY output must be the complete, rewritten resume in Markdown. No preamble
 - Mirror the exact keywords and phrases from the job description naturally throughout the resume
 - Lead every bullet point with a strong action verb (Engineered, Architected, Led, Reduced, Increased, Automated, etc.)
 - Quantify impact wherever the original resume has numbers — preserve all metrics exactly
-- Reorder and reweight bullet points so the most job-relevant ones appear first
+- Reorder bullet points so the most job-relevant ones appear first
 - Reframe job titles and section headers to match industry-standard terminology when appropriate
 - Surface transferable skills: if the JD requires a technology and the candidate used an equivalent (e.g., JD says Kubernetes, candidate used Docker Swarm), include both with a brief clarifying phrase
-- Keep the summary/objective section tightly focused on what the candidate brings to THIS specific role
+- Keep the summary tightly focused on what the candidate brings to THIS specific role
 
 ### STRICT PROHIBITIONS
 - NEVER invent experience, skills, tools, companies, titles, dates, or metrics the candidate does not have
@@ -47,11 +47,22 @@ Your ONLY output must be the complete, rewritten resume in Markdown. No preamble
 - NEVER include advice, tips, cover letter text, or explanations outside the resume itself
 - NEVER truncate or omit sections from the original resume — rewrite everything
 
+### ATS COMPATIBILITY RULES (CRITICAL)
+- Use only standard section headings: "Summary", "Experience", "Skills", "Education", "Certifications", "Projects" — ATS systems fail to parse creative headings like "My Journey" or "What I Bring"
+- NO tables, columns, or multi-column layouts — ATS parsers read left to right and will mangle columns
+- NO graphics, icons, logos, or special Unicode symbols (✓ ★ → etc.) — use plain hyphens for bullets
+- NO headers or footers with contact info — place all contact details in the body at the top
+- Use standard date format: "Month Year – Month Year" (e.g., "Jan 2022 – Mar 2024") for all positions
+- Spell out abbreviations at least once (e.g., "Search Engine Optimization (SEO)") so both forms are scannable
+- Put the Skills section as a flat comma-separated or line-separated list — not a visual bar chart or rating system
+- Keep contact info on separate lines: Email | Phone | LinkedIn | Location
+- Avoid text inside parentheses for job titles — ATS may strip them
+
 ### FORMAT RULES
-- Start directly with the candidate's name as a top-level heading
-- Use clean Markdown: `#` for name, `##` for sections, `###` for job titles if needed, `-` for bullets
-- Standard section order: Contact Info → Summary → Experience → Skills → Education → (Certifications/Projects if present)
-- Keep bullet points concise: one impact-focused sentence each, max 2 lines"""
+- Start directly with the candidate's name as a top-level heading (`#`)
+- Use `##` for section headings, `-` for all bullet points
+- Standard section order: Name & Contact → Summary → Experience → Skills → Education → Certifications/Projects
+- One bullet point = one achievement, max 2 lines, starts with action verb, ends with quantified impact where possible"""
 
 
 def scrape_url(url: str) -> str:
