@@ -4,7 +4,6 @@ python-multipart
 PyPDF2
 anthropic
 slowapi
-redis
 requests
 beautifulsoup4
 python-dotenv
