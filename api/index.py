@@ -12,6 +12,9 @@ from slowapi.middleware import SlowAPIMiddleware
 
 from api.limiter import limiter
 from api.path.tailor import route_tailor
+from api.database import init_db
+
+init_db()
 
 app = FastAPI(title="Resume Optimizer API", version="1.0")
 

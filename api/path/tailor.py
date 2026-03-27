@@ -9,6 +9,7 @@ from fastapi import HTTPException, APIRouter, Form, Request, UploadFile, File
 from starlette.responses import HTMLResponse
 
 from api.limiter import limiter
+from api.database import log_interaction
 
 route_tailor = APIRouter()
 
@@ -112,6 +113,7 @@ async def optimize_resume(
     job_url: str = Form(...),
     resume_file: UploadFile = File(...)
 ):
+    resume_text = None
     try:
         file_bytes = await resume_file.read()
         try:
@@ -162,16 +164,21 @@ async def optimize_resume(
 
             elif response.stop_reason == "end_turn":
                 final_text = next(b.text for b in response.content if hasattr(b, "text"))
+                log_interaction(job_url, resume_file.filename, resume_text, "success")
                 return {"status": "success", "markdown_resume": final_text}
 
             else:
                 raise HTTPException(status_code=500, detail=f"Unexpected stop reason: {response.stop_reason}")
 
-    except HTTPException:
+    except HTTPException as e:
+        log_interaction(job_url, resume_file.filename, resume_text, "error", e.detail)
         raise
     except Exception as e:
         if "529" in str(e) or "overloaded" in str(e).lower():
-            raise HTTPException(status_code=503, detail="The AI service is temporarily overloaded. Please try again in a moment.")
+            msg = "The AI service is temporarily overloaded. Please try again in a moment."
+            log_interaction(job_url, resume_file.filename, resume_text, "error", msg)
+            raise HTTPException(status_code=503, detail=msg)
+        log_interaction(job_url, resume_file.filename, resume_text, "error", f"{type(e).__name__}: {e}")
         raise HTTPException(status_code=500, detail=f"{type(e).__name__}: {e}")
 
 
