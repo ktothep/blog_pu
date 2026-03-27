@@ -1,3 +1,5 @@
+import os
+
 from dotenv import load_dotenv
 from fastapi import FastAPI
 from flask_limiter import Limiter, RateLimitExceeded
@@ -7,7 +9,8 @@ from slowapi.middleware import SlowAPIMiddleware
 
 from path.tailor import route_tailor
 load_dotenv()
-limiter = Limiter(key_func=get_remote_address)
+REDIS_URL = os.getenv("REDIS_URL")
+limiter = Limiter(key_func=get_remote_address, storage_uri=REDIS_URL)
 app = FastAPI(title="Resume Optimizer API", version="1.0")
 
 app.state.limiter = limiter

@@ -8,3 +8,4 @@ litellm
 sqlalchemy
 psycopg2-binary
 slowapi
+redis
