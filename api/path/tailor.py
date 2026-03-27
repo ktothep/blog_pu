@@ -116,7 +116,10 @@ async def serve_ui():
                     parserData.append('resume_file', document.getElementById('resumeFile').files[0]);
 
                     const parseResponse = await fetch('/api/parser', { method: 'POST', body: parserData });
-                    if (!parseResponse.ok) throw new Error("Document parsing failed.");
+                    if (!parseResponse.ok) {
+                        const err = await parseResponse.json().catch(() => ({}));
+                        throw new Error(err.detail || `Parser error ${parseResponse.status}`);
+                    }
                     const { resume_text } = await parseResponse.json();
 
                     // STEP 2: Call this Agent Brain endpoint with the extracted text
