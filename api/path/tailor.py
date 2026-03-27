@@ -19,7 +19,7 @@ RULES:
 5. If the job description requires a specific technology (e.g., Async Python) and the user has used a directly related framework (e.g., FastAPI, which is inherently async), you MAY explicitly name the required technology to optimize for ATS algorithms. However, do not invent entire roles or completely unrelated skills."""
 
 
-@route_tailor.post("/path/v1/optimize-resume")
+@route_tailor.post("/api/v1/optimize-resume")
 @limiter.limit("2/hour")
 async def optimize_resume(request: Request, job_url: str = Form(...), resume_text: str = Form(...)):
     try:

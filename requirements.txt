@@ -1,7 +1,6 @@
 fastapi~=0.115.12
 pydantic~=2.11.3
 starlette~=0.46.2
-docx~=0.2.4
 requests~=2.32.3
 PyPDF2~=3.0.1
 beautifulsoup4~=4.12.3
