@@ -192,6 +192,8 @@ async def serve_ui():
     <title>AI Resume Tailor</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-2654835390881247"
+     crossorigin="anonymous"></script>
 </head>
 <body class="bg-gray-50 min-h-screen p-8 font-sans">
     <div class="max-w-3xl mx-auto bg-white p-8 rounded-xl shadow-lg border border-gray-100">
