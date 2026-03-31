@@ -135,7 +135,7 @@ async def optimize_resume(
         # Agentic loop — Claude calls scrape_job_url tool, we execute it, then Claude writes the resume
         while True:
             response = client.messages.create(
-                model="claude-3-haiku-20240307",
+                model="claude-sonnet-4-6",
                 max_tokens=4096,
                 system=SYSTEM_PROMPT,
                 tools=TOOLS,
