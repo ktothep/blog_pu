@@ -110,11 +110,15 @@ TOOLS = [
 @limiter.limit("2/hour")
 async def optimize_resume(
     request: Request,
-    job_url: str = Form(...),
+    job_url: str = Form(default=""),
+    job_description_text: str = Form(default=""),
     resume_file: UploadFile = File(...)
 ):
     resume_text = None
     try:
+        if not job_url.strip() and not job_description_text.strip():
+            raise HTTPException(status_code=400, detail="Please provide either a job posting URL or paste the job description.")
+
         file_bytes = await resume_file.read()
         try:
             resume_text = parse_file(file_bytes, resume_file.filename.lower())
@@ -125,6 +129,23 @@ async def optimize_resume(
             raise HTTPException(status_code=400, detail="Could not extract text from the uploaded file.")
 
         client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+
+        # If job description text was pasted directly, skip tool use entirely
+        if job_description_text.strip():
+            user_content = f"Here is the job description:\n\n{job_description_text.strip()}\n\nHere is my current resume:\n\n{resume_text}"
+            if job_url.strip():
+                user_content = f"Job posting URL: {job_url}\n\n" + user_content
+            response = client.messages.create(
+                model="claude-sonnet-4-6",
+                max_tokens=4096,
+                system=SYSTEM_PROMPT,
+                messages=[{"role": "user", "content": user_content}]
+            )
+            final_text = next(b.text for b in response.content if hasattr(b, "text"))
+            log_interaction(job_url or "text-input", resume_file.filename, resume_text, "success")
+            return {"status": "success", "markdown_resume": final_text}
+
+        # Otherwise use the agentic loop to scrape the URL
         messages = [
             {
                 "role": "user",
@@ -132,7 +153,6 @@ async def optimize_resume(
             }
         ]
 
-        # Agentic loop — Claude calls scrape_job_url tool, we execute it, then Claude writes the resume
         while True:
             response = client.messages.create(
                 model="claude-sonnet-4-6",
@@ -144,8 +164,7 @@ async def optimize_resume(
 
             if response.stop_reason == "tool_use":
                 tool_use_block = next(b for b in response.content if b.type == "tool_use")
-                url_to_scrape = tool_use_block.input["url"]
-                job_description = scrape_url(url_to_scrape)
+                job_description = scrape_url(tool_use_block.input["url"])
 
                 if not job_description:
                     job_description = "Could not retrieve the job description from this URL. Please tailor the resume based on the URL context and any visible keywords."
@@ -153,13 +172,7 @@ async def optimize_resume(
                 messages.append({"role": "assistant", "content": response.content})
                 messages.append({
                     "role": "user",
-                    "content": [
-                        {
-                            "type": "tool_result",
-                            "tool_use_id": tool_use_block.id,
-                            "content": job_description
-                        }
-                    ]
+                    "content": [{"type": "tool_result", "tool_use_id": tool_use_block.id, "content": job_description}]
                 })
 
             elif response.stop_reason == "end_turn":
@@ -171,14 +184,14 @@ async def optimize_resume(
                 raise HTTPException(status_code=500, detail=f"Unexpected stop reason: {response.stop_reason}")
 
     except HTTPException as e:
-        log_interaction(job_url, resume_file.filename, resume_text, "error", e.detail)
+        log_interaction(job_url or "text-input", resume_file.filename, resume_text, "error", e.detail)
         raise
     except Exception as e:
         if "529" in str(e) or "overloaded" in str(e).lower():
             msg = "The AI service is temporarily overloaded. Please try again in a moment."
-            log_interaction(job_url, resume_file.filename, resume_text, "error", msg)
+            log_interaction(job_url or "text-input", resume_file.filename, resume_text, "error", msg)
             raise HTTPException(status_code=503, detail=msg)
-        log_interaction(job_url, resume_file.filename, resume_text, "error", f"{type(e).__name__}: {e}")
+        log_interaction(job_url or "text-input", resume_file.filename, resume_text, "error", f"{type(e).__name__}: {e}")
         raise HTTPException(status_code=500, detail=f"{type(e).__name__}: {e}")
 
 
@@ -198,13 +211,21 @@ async def serve_ui():
 <body class="bg-gray-50 min-h-screen p-8 font-sans">
     <div class="max-w-3xl mx-auto bg-white p-8 rounded-xl shadow-lg border border-gray-100">
         <h1 class="text-3xl font-bold text-gray-800 mb-2">AI Resume Tailor</h1>
-        <p class="text-gray-500 mb-8">Upload your resume and a job URL to get a perfectly optimized match.</p>
+        <p class="text-gray-500 mb-8">Upload your resume and provide a job URL or paste the description to get a perfectly optimized match.</p>
 
         <form id="resumeForm" class="space-y-6">
             <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">Job Posting URL</label>
-                <input type="url" id="jobUrl" required placeholder="https://linkedin.com/jobs/..."
+                <label class="block text-sm font-medium text-gray-700 mb-2">Job Posting URL <span class="text-gray-400 font-normal">(optional if you paste below)</span></label>
+                <input type="url" id="jobUrl" placeholder="https://linkedin.com/jobs/..."
                        class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none">
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">
+                    Job Description
+                    <span class="text-gray-400 font-normal">(paste here if URL can't be parsed)</span>
+                </label>
+                <textarea id="jobDescriptionText" rows="6" placeholder="Paste the full job description here..."
+                          class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none resize-y text-sm"></textarea>
             </div>
             <div>
                 <label class="block text-sm font-medium text-gray-700 mb-2">Your Current Resume (PDF/TXT)</label>
@@ -239,8 +260,16 @@ async def serve_ui():
             results.classList.add('hidden');
 
             try {
+                const jobUrl = document.getElementById('jobUrl').value.trim();
+                const jobDescriptionText = document.getElementById('jobDescriptionText').value.trim();
+
+                if (!jobUrl && !jobDescriptionText) {
+                    throw new Error('Please provide a job posting URL or paste the job description.');
+                }
+
                 const formData = new FormData();
-                formData.append('job_url', document.getElementById('jobUrl').value);
+                formData.append('job_url', jobUrl);
+                formData.append('job_description_text', jobDescriptionText);
                 formData.append('resume_file', document.getElementById('resumeFile').files[0]);
 
                 const response = await fetch('/api/optimize', { method: 'POST', body: formData });
