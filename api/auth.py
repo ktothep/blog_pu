@@ -4,26 +4,25 @@ import hmac
 import json
 import os
 import secrets
-import sqlite3
 import time
 
 from fastapi import APIRouter, HTTPException, Header
 from pydantic import BaseModel, EmailStr, Field
 
-route_auth = APIRouter()
-
-DEFAULT_DB_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "users.db")
-
-
-def get_db_path() -> str:
-    return os.getenv("APP_DB_PATH", DEFAULT_DB_PATH)
-
-
-# Supabase is used when SUPABASE_URL/KEY are configured and no local path is
-# forced (tests set APP_DB_PATH, so they keep using SQLite).
-USE_SUPABASE = not os.getenv("APP_DB_PATH") and bool(
-    os.getenv("SUPABASE_URL") and os.getenv("SUPABASE_KEY")
+from api.database import (
+    USE_SUPABASE,
+    user_by_email,
+    user_by_id,
+    insert_user,
+    get_profile,
+    save_profile,
+    save_activity,
+    get_activity,
+    list_activities,
+    delete_activity,
 )
+
+route_auth = APIRouter()
 
 
 class RegisterUserRequest(BaseModel):
@@ -37,92 +36,16 @@ class LoginUserRequest(BaseModel):
     password: str = Field(..., min_length=8)
 
 
+class ProfileRequest(BaseModel):
+    target_role: str = ""
+    years_experience: str = ""
+    industry: str = ""
+    locations: str = ""
+    skills_emphasis: str = ""
+    salary_expectations: str = ""
+
+
 APP_SECRET_KEY = os.getenv("APP_SECRET_KEY", "change-me-in-production")
-
-
-# --------------------------------------------------------------------------
-# SQLite backend (local dev / tests)
-# --------------------------------------------------------------------------
-
-def _get_connection() -> sqlite3.Connection:
-    conn = sqlite3.connect(get_db_path())
-    conn.row_factory = sqlite3.Row
-    conn.execute(
-        """
-        CREATE TABLE IF NOT EXISTS users (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL,
-            email TEXT NOT NULL UNIQUE,
-            password_hash TEXT NOT NULL,
-            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-        )
-        """
-    )
-    conn.execute(
-        """
-        CREATE TABLE IF NOT EXISTS user_activity (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER NOT NULL,
-            title TEXT NOT NULL,
-            ats_score REAL NOT NULL,
-            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY(user_id) REFERENCES users(id)
-        )
-        """
-    )
-    conn.commit()
-    return conn
-
-
-# --------------------------------------------------------------------------
-# Supabase backend (production on Vercel)
-# --------------------------------------------------------------------------
-
-def _supabase():
-    from api.database import get_supabase_client
-
-    client = get_supabase_client()
-    if client is None:
-        raise HTTPException(status_code=503, detail="Database is not configured.")
-    return client
-
-
-def _sb_user_by_email(email: str) -> dict | None:
-    resp = _supabase().table("users").select(
-        "id, name, email, password_hash"
-    ).eq("email", email).limit(1).execute()
-    return resp.data[0] if resp.data else None
-
-
-def _sb_user_by_id(user_id: int) -> dict | None:
-    resp = _supabase().table("users").select(
-        "id, name, email"
-    ).eq("id", user_id).limit(1).execute()
-    return resp.data[0] if resp.data else None
-
-
-def _sb_insert_user(name: str, email: str, password_hash: str) -> int:
-    resp = _supabase().table("users").insert({
-        "name": name,
-        "email": email,
-        "password_hash": password_hash,
-    }).execute()
-    return resp.data[0]["id"]
-
-
-def _sb_recent_activity(user_id: int, limit: int = 5) -> list[dict]:
-    resp = _supabase().table("user_activity").select(
-        "title, ats_score, created_at"
-    ).eq("user_id", user_id).order("id", desc=True).limit(limit).execute()
-    return resp.data or []
-
-
-def _sb_save_activity(user_id: int, title: str, ats_score: float) -> None:
-    _supabase().table("user_activity").insert({
-        "user_id": user_id,
-        "title": title,
-        "ats_score": float(ats_score),
-    }).execute()
 
 
 def hash_password(password: str) -> str:
@@ -193,24 +116,10 @@ async def register_user(payload: RegisterUserRequest):
     name = payload.name.strip()
     email = payload.email.strip().lower()
 
-    if USE_SUPABASE:
-        existing = _sb_user_by_email(email)
-        if existing:
-            raise HTTPException(status_code=400, detail="This email is already registered.")
-        password_hash = hash_password(payload.password)
-        user_id = _sb_insert_user(name, email, password_hash)
-    else:
-        with _get_connection() as conn:
-            existing = conn.execute("SELECT id FROM users WHERE email = ?", (email,)).fetchone()
-            if existing:
-                raise HTTPException(status_code=400, detail="This email is already registered.")
-
-            stored_hash = hash_password(payload.password)
-            cursor = conn.execute(
-                "INSERT INTO users (name, email, password_hash) VALUES (?, ?, ?)",
-                (name, email, stored_hash),
-            )
-            user_id = cursor.lastrowid
+    existing = user_by_email(email)
+    if existing:
+        raise HTTPException(status_code=400, detail="This email is already registered.")
+    user_id = insert_user(name, email, hash_password(payload.password))
 
     return {
         "message": "User registered successfully.",
@@ -225,16 +134,7 @@ async def register_user(payload: RegisterUserRequest):
 @route_auth.post("/api/login")
 async def login_user(payload: LoginUserRequest):
     email = payload.email.strip().lower()
-
-    if USE_SUPABASE:
-        user = _sb_user_by_email(email)
-    else:
-        with _get_connection() as conn:
-            user = conn.execute(
-                "SELECT id, name, email, password_hash FROM users WHERE email = ?",
-                (email,),
-            ).fetchone()
-        user = dict(user) if user is not None else None
+    user = user_by_email(email, include_password=True)
 
     if not user or not verify_password(payload.password, user["password_hash"]):
         raise HTTPException(status_code=401, detail="Invalid email or password.")
@@ -255,20 +155,9 @@ async def login_user(payload: LoginUserRequest):
 async def get_current_user(authorization: str = Header(default="")):
     if not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Missing bearer token.")
+    payload = verify_token(authorization.split(" ", 1)[1].strip())
 
-    token = authorization.split(" ", 1)[1].strip()
-    payload = verify_token(token)
-
-    if USE_SUPABASE:
-        user = _sb_user_by_id(payload["sub"])
-    else:
-        with _get_connection() as conn:
-            user = conn.execute(
-                "SELECT id, name, email FROM users WHERE id = ?",
-                (payload["sub"],),
-            ).fetchone()
-        user = dict(user) if user is not None else None
-
+    user = user_by_id(payload["sub"])
     if not user:
         raise HTTPException(status_code=401, detail="User not found.")
 
@@ -283,52 +172,116 @@ async def get_current_user(authorization: str = Header(default="")):
 async def get_dashboard(authorization: str = Header(default="")):
     if not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Authentication required.")
+    payload = verify_token(authorization.split(" ", 1)[1].strip())
 
-    token = authorization.split(" ", 1)[1].strip()
-    payload = verify_token(token)
-
-    if USE_SUPABASE:
-        user = _sb_user_by_id(payload["sub"])
-        recent_activity = _sb_recent_activity(payload["sub"]) if user else []
-    else:
-        with _get_connection() as conn:
-            user = conn.execute(
-                "SELECT id, name, email FROM users WHERE id = ?",
-                (payload["sub"],),
-            ).fetchone()
-            recent_activity = conn.execute(
-                "SELECT title, ats_score, created_at FROM user_activity WHERE user_id = ? ORDER BY id DESC LIMIT 5",
-                (payload["sub"],),
-            ).fetchall() if user else []
-        recent_activity = [dict(row) for row in recent_activity]
-
+    user = user_by_id(payload["sub"])
     if not user:
         raise HTTPException(status_code=401, detail="User not found.")
 
+    try:
+        recent_activity = list_activities(user["id"], limit=5)
+    except Exception:
+        recent_activity = []
+
     return {
-        "user": {
-            "id": user["id"],
-            "name": user["name"],
-            "email": user["email"],
-        },
+        "user": user,
         "recent_activity": [
             {
-                "title": row["title"],
-                "ats_score": row["ats_score"],
-                "created_at": row["created_at"],
+                "id": row.get("id"),
+                "title": row.get("title"),
+                "ats_score": row.get("ats_score"),
+                "ats_score_tailored": row.get("ats_score_tailored"),
+                "style": row.get("style") or "standard",
+                "created_at": row.get("created_at"),
             }
             for row in recent_activity
         ],
     }
 
 
-def save_user_activity(user_id: int, title: str, ats_score: float) -> None:
-    if USE_SUPABASE:
-        _sb_save_activity(user_id, title, ats_score)
-    else:
-        with _get_connection() as conn:
-            conn.execute(
-                "INSERT INTO user_activity (user_id, title, ats_score) VALUES (?, ?, ?)",
-                (user_id, title, float(ats_score)),
-            )
-            conn.commit()
+# --------------------------------------------------------------------------
+# Resume history (server-side)
+# --------------------------------------------------------------------------
+
+@route_auth.get("/api/history")
+async def get_history(authorization: str = Header(default="")):
+    if not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Authentication required.")
+    payload = verify_token(authorization.split(" ", 1)[1].strip())
+
+    try:
+        rows = list_activities(payload["sub"], limit=20)
+    except Exception:
+        raise HTTPException(status_code=503, detail="History storage is not configured. Run the latest schema migration in Supabase.")
+
+    return {
+        "history": [
+            {
+                "id": row.get("id"),
+                "title": row.get("title"),
+                "ats_score": row.get("ats_score"),
+                "ats_score_tailored": row.get("ats_score_tailored"),
+                "style": row.get("style") or "standard",
+                "created_at": row.get("created_at"),
+            }
+            for row in rows
+        ]
+    }
+
+
+@route_auth.get("/api/history/{activity_id}")
+async def get_history_item(activity_id: int, authorization: str = Header(default="")):
+    if not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Authentication required.")
+    payload = verify_token(authorization.split(" ", 1)[1].strip())
+
+    row = get_activity(payload["sub"], activity_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="Resume version not found.")
+    return {
+        "id": row.get("id"),
+        "title": row.get("title"),
+        "ats_score": row.get("ats_score"),
+        "ats_score_tailored": row.get("ats_score_tailored"),
+        "style": row.get("style") or "standard",
+        "created_at": row.get("created_at"),
+        "original_resume": row.get("original_resume") or "",
+        "markdown_resume": row.get("markdown_resume") or "",
+        "job_description": row.get("job_description") or "",
+    }
+
+
+@route_auth.delete("/api/history/{activity_id}")
+async def delete_history_item(activity_id: int, authorization: str = Header(default="")):
+    if not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Authentication required.")
+    payload = verify_token(authorization.split(" ", 1)[1].strip())
+    delete_activity(payload["sub"], activity_id)
+    return {"message": "Deleted.", "id": activity_id}
+
+
+# --------------------------------------------------------------------------
+# Targeting profile
+# --------------------------------------------------------------------------
+
+@route_auth.get("/api/profile")
+async def read_profile(authorization: str = Header(default="")):
+    if not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Authentication required.")
+    payload = verify_token(authorization.split(" ", 1)[1].strip())
+    try:
+        return get_profile(payload["sub"])
+    except Exception:
+        raise HTTPException(status_code=503, detail="Profile storage is not configured. Run the latest schema migration in Supabase.")
+
+
+@route_auth.put("/api/profile")
+async def update_profile(fields: ProfileRequest, authorization: str = Header(default="")):
+    if not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Authentication required.")
+    payload = verify_token(authorization.split(" ", 1)[1].strip())
+    try:
+        save_profile(payload["sub"], fields.model_dump())
+    except Exception:
+        raise HTTPException(status_code=503, detail="Profile storage is not configured. Run the latest schema migration in Supabase.")
+    return {"message": "Targeting profile saved successfully."}
