@@ -2,6 +2,7 @@ fastapi
 uvicorn
 starlette
 pydantic
+email-validator
 python-multipart
 PyPDF2
 anthropic
