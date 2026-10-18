@@ -6,8 +6,10 @@ import os
 import secrets
 import time
 
-from fastapi import APIRouter, HTTPException, Header
+from fastapi import APIRouter, HTTPException, Header, Request
 from pydantic import BaseModel, EmailStr, Field
+
+from api.limiter import limiter
 
 from api.database import (
     USE_SUPABASE,
@@ -112,7 +114,8 @@ def get_authenticated_user(request: object) -> dict:
 
 
 @route_auth.post("/api/register", status_code=201)
-async def register_user(payload: RegisterUserRequest):
+@limiter.limit("5/hour", error_message="Too many registration attempts. Please try again later.")
+async def register_user(request: Request, payload: RegisterUserRequest):
     name = payload.name.strip()
     email = payload.email.strip().lower()
 
@@ -132,7 +135,8 @@ async def register_user(payload: RegisterUserRequest):
 
 
 @route_auth.post("/api/login")
-async def login_user(payload: LoginUserRequest):
+@limiter.limit("10/hour", error_message="Too many login attempts. Please try again later.")
+async def login_user(request: Request, payload: LoginUserRequest):
     email = payload.email.strip().lower()
     user = user_by_email(email, include_password=True)
 

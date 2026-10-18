@@ -107,6 +107,7 @@ def markdown_to_docx(markdown_resume: str):
 
 
 @route_extras.post("/api/export/docx")
+@limiter.limit("12/hour", error_message="Too many exports. Please try again later.")
 async def export_docx(request: Request, payload: dict = Body(...)):
     get_authenticated_user(request)
     markdown_resume = payload.get("markdown_resume") or ""
@@ -214,13 +215,15 @@ def _activity_context(activity: dict) -> str:
 
 
 @route_extras.post("/api/cover-letter")
-@limiter.limit("4/hour")
+@limiter.limit("3/hour", error_message="Free limit reached: 3 cover letters per hour.")
+@limiter.limit("8/day", error_message="Daily limit reached: 8 cover letters per day.")
 async def generate_cover_letter(request: Request, body: ExtrasRequest):
     return _generate_extra(request, body, COVER_LETTER_PROMPT, "cover_letter")
 
 
 @route_extras.post("/api/interview-prep")
-@limiter.limit("4/hour")
+@limiter.limit("3/hour", error_message="Free limit reached: 3 interview preps per hour.")
+@limiter.limit("8/day", error_message="Daily limit reached: 8 interview preps per day.")
 async def generate_interview_prep(request: Request, body: ExtrasRequest):
     return _generate_extra(request, body, INTERVIEW_PREP_PROMPT, "interview_prep")
 

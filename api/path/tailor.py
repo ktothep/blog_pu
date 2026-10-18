@@ -252,7 +252,8 @@ TOOLS = [
 
 
 @route_tailor.post("/api/optimize")
-@limiter.limit("2/hour")
+@limiter.limit("2/hour", error_message="Free limit reached: 2 optimizations per hour. Upgrade or try again later.")
+@limiter.limit("6/day", error_message="Daily limit reached: 6 optimizations per day.")
 async def optimize_resume(
     request: Request,
     job_url: str = Form(default=""),
@@ -1046,7 +1047,7 @@ async def serve_ui():
                     let msg = `Server error ${response.status}`;
                     try { msg = JSON.parse(text).detail || msg; } catch {}
                     if (response.status === 429) {
-                        showToast("You've used your 2 free optimizations for this hour. Please try again later.", 'warn');
+                        showToast(msg, 'warn');
                     } else if (response.status === 401) {
                         showToast('Please log in before optimizing your resume.', 'warn');
                     } else {

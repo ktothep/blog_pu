@@ -39,7 +39,7 @@ async def validation_handler(request: Request, exc: RequestValidationError):
 async def rate_limit_handler(request: Request, exc: RateLimitExceeded):
     return JSONResponse(
         status_code=429,
-        content={"detail": "You have reached the limit of 2 requests per hour. Please try again later."}
+        content={"detail": exc.detail if getattr(exc, "detail", None) else "Too many requests. Please try again later."},
     )
 
 
