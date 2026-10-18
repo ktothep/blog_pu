@@ -10,6 +10,7 @@ from fastapi.responses import JSONResponse
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 
+from api.auth import route_auth
 from api.limiter import limiter
 from api.path.tailor import route_tailor
 from api.database import init_db
@@ -29,4 +30,5 @@ async def rate_limit_handler(request: Request, exc: RateLimitExceeded):
 
 app.state.limiter = limiter
 app.add_middleware(SlowAPIMiddleware)
+app.include_router(route_auth)
 app.include_router(route_tailor)
