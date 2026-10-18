@@ -6,11 +6,20 @@ from supabase import create_client
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 
+_SUPABASE_CLIENT = None
 
-def _get_client():
+
+def get_supabase_client():
+    global _SUPABASE_CLIENT
     if not SUPABASE_URL or not SUPABASE_KEY:
         return None
-    return create_client(SUPABASE_URL, SUPABASE_KEY)
+    if _SUPABASE_CLIENT is None:
+        _SUPABASE_CLIENT = create_client(SUPABASE_URL, SUPABASE_KEY)
+    return _SUPABASE_CLIENT
+
+
+def _get_client():
+    return get_supabase_client()
 
 
 def init_db():

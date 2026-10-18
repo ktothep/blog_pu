@@ -375,9 +375,9 @@ async def serve_ui():
                     <div class="border border-slate-200 rounded-2xl p-6 bg-white shadow-sm">
                         <h2 class="text-2xl font-bold text-slate-900 mb-5">Create your account</h2>
                         <form id="registerForm" class="space-y-3">
-                            <input id="registerName" type="text" placeholder="Full name" class="w-full px-4 py-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none" required>
-                            <input id="registerEmail" type="email" placeholder="Email" class="w-full px-4 py-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none" required>
-                            <input id="registerPassword" type="password" placeholder="Password" class="w-full px-4 py-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none" required>
+                            <input id="registerName" type="text" placeholder="Full name" class="w-full px-4 py-3 text-gray-900 placeholder:text-gray-400 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none" required>
+                            <input id="registerEmail" type="email" placeholder="Email" class="w-full px-4 py-3 text-gray-900 placeholder:text-gray-400 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none" required>
+                            <input id="registerPassword" type="password" placeholder="Password" class="w-full px-4 py-3 text-gray-900 placeholder:text-gray-400 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none" required>
                             <button type="submit" class="w-full bg-blue-600 text-white font-semibold py-3 rounded-xl hover:bg-blue-700 transition-colors">Create account</button>
                         </form>
                     </div>
@@ -385,8 +385,8 @@ async def serve_ui():
                     <div class="border border-slate-200 rounded-2xl p-6 bg-white shadow-sm">
                         <h2 class="text-2xl font-bold text-slate-900 mb-5">Welcome back</h2>
                         <form id="loginForm" class="space-y-3">
-                            <input id="loginEmail" type="email" placeholder="Email" class="w-full px-4 py-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none" required>
-                            <input id="loginPassword" type="password" placeholder="Password" class="w-full px-4 py-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none" required>
+                            <input id="loginEmail" type="email" placeholder="Email" class="w-full px-4 py-3 text-gray-900 placeholder:text-gray-400 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none" required>
+                            <input id="loginPassword" type="password" placeholder="Password" class="w-full px-4 py-3 text-gray-900 placeholder:text-gray-400 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none" required>
                             <button type="submit" class="w-full bg-emerald-600 text-white font-semibold py-3 rounded-xl hover:bg-emerald-700 transition-colors">Sign in</button>
                         </form>
                     </div>
@@ -410,7 +410,7 @@ async def serve_ui():
                         <div>
                             <label class="block text-sm font-medium text-slate-700 mb-2">Job Posting URL <span class="text-slate-400 font-normal">(optional if you paste below)</span></label>
                             <input type="url" id="jobUrl" placeholder="https://linkedin.com/jobs/..."
-                                   class="w-full px-4 py-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none">
+                                   class="w-full px-4 py-3 text-gray-900 placeholder:text-gray-400 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none">
                         </div>
                         <div>
                             <label class="block text-sm font-medium text-slate-700 mb-2">
@@ -418,7 +418,7 @@ async def serve_ui():
                                 <span class="text-slate-400 font-normal">(paste here if URL can't be parsed)</span>
                             </label>
                             <textarea id="jobDescriptionText" rows="6" placeholder="Paste the full job description here..."
-                                      class="w-full px-4 py-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none resize-y text-sm"></textarea>
+                                      class="w-full px-4 py-3 text-gray-900 placeholder:text-gray-400 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none resize-y text-sm"></textarea>
                         </div>
                         <div>
                             <label class="block text-sm font-medium text-slate-700 mb-2">Your Current Resume (PDF/TXT)</label>

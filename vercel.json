@@ -5,7 +5,7 @@
     }
   },
   "rewrites": [
-    { "source": "/api/optimize", "destination": "/api/index.py" },
+    { "source": "/api/:path*", "destination": "/api/index.py" },
     { "source": "/", "destination": "/api/index.py" }
   ]
 }

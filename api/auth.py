@@ -19,6 +19,13 @@ def get_db_path() -> str:
     return os.getenv("APP_DB_PATH", DEFAULT_DB_PATH)
 
 
+# Supabase is used when SUPABASE_URL/KEY are configured and no local path is
+# forced (tests set APP_DB_PATH, so they keep using SQLite).
+USE_SUPABASE = not os.getenv("APP_DB_PATH") and bool(
+    os.getenv("SUPABASE_URL") and os.getenv("SUPABASE_KEY")
+)
+
+
 class RegisterUserRequest(BaseModel):
     name: str = Field(..., min_length=2, max_length=100)
     email: EmailStr
@@ -33,9 +40,12 @@ class LoginUserRequest(BaseModel):
 APP_SECRET_KEY = os.getenv("APP_SECRET_KEY", "change-me-in-production")
 
 
-def get_connection() -> sqlite3.Connection:
-    db_path = get_db_path()
-    conn = sqlite3.connect(db_path)
+# --------------------------------------------------------------------------
+# SQLite backend (local dev / tests)
+# --------------------------------------------------------------------------
+
+def _get_connection() -> sqlite3.Connection:
+    conn = sqlite3.connect(get_db_path())
     conn.row_factory = sqlite3.Row
     conn.execute(
         """
@@ -64,32 +74,55 @@ def get_connection() -> sqlite3.Connection:
     return conn
 
 
-def init_auth_db() -> None:
-    with get_connection() as conn:
-        conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS users (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name TEXT NOT NULL,
-                email TEXT NOT NULL UNIQUE,
-                password_hash TEXT NOT NULL,
-                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-            )
-            """
-        )
-        conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS user_activity (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id INTEGER NOT NULL,
-                title TEXT NOT NULL,
-                ats_score REAL NOT NULL,
-                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY(user_id) REFERENCES users(id)
-            )
-            """
-        )
-        conn.commit()
+# --------------------------------------------------------------------------
+# Supabase backend (production on Vercel)
+# --------------------------------------------------------------------------
+
+def _supabase():
+    from api.database import get_supabase_client
+
+    client = get_supabase_client()
+    if client is None:
+        raise HTTPException(status_code=503, detail="Database is not configured.")
+    return client
+
+
+def _sb_user_by_email(email: str) -> dict | None:
+    resp = _supabase().table("users").select(
+        "id, name, email, password_hash"
+    ).eq("email", email).limit(1).execute()
+    return resp.data[0] if resp.data else None
+
+
+def _sb_user_by_id(user_id: int) -> dict | None:
+    resp = _supabase().table("users").select(
+        "id, name, email"
+    ).eq("id", user_id).limit(1).execute()
+    return resp.data[0] if resp.data else None
+
+
+def _sb_insert_user(name: str, email: str, password_hash: str) -> int:
+    resp = _supabase().table("users").insert({
+        "name": name,
+        "email": email,
+        "password_hash": password_hash,
+    }).execute()
+    return resp.data[0]["id"]
+
+
+def _sb_recent_activity(user_id: int, limit: int = 5) -> list[dict]:
+    resp = _supabase().table("user_activity").select(
+        "title, ats_score, created_at"
+    ).eq("user_id", user_id).order("id", desc=True).limit(limit).execute()
+    return resp.data or []
+
+
+def _sb_save_activity(user_id: int, title: str, ats_score: float) -> None:
+    _supabase().table("user_activity").insert({
+        "user_id": user_id,
+        "title": title,
+        "ats_score": float(ats_score),
+    }).execute()
 
 
 def hash_password(password: str) -> str:
@@ -160,17 +193,24 @@ async def register_user(payload: RegisterUserRequest):
     name = payload.name.strip()
     email = payload.email.strip().lower()
 
-    with get_connection() as conn:
-        existing = conn.execute("SELECT id FROM users WHERE email = ?", (email,)).fetchone()
+    if USE_SUPABASE:
+        existing = _sb_user_by_email(email)
         if existing:
             raise HTTPException(status_code=400, detail="This email is already registered.")
-
         password_hash = hash_password(payload.password)
-        cursor = conn.execute(
-            "INSERT INTO users (name, email, password_hash) VALUES (?, ?, ?)",
-            (name, email, password_hash),
-        )
-        user_id = cursor.lastrowid
+        user_id = _sb_insert_user(name, email, password_hash)
+    else:
+        with _get_connection() as conn:
+            existing = conn.execute("SELECT id FROM users WHERE email = ?", (email,)).fetchone()
+            if existing:
+                raise HTTPException(status_code=400, detail="This email is already registered.")
+
+            stored_hash = hash_password(payload.password)
+            cursor = conn.execute(
+                "INSERT INTO users (name, email, password_hash) VALUES (?, ?, ?)",
+                (name, email, stored_hash),
+            )
+            user_id = cursor.lastrowid
 
     return {
         "message": "User registered successfully.",
@@ -186,11 +226,15 @@ async def register_user(payload: RegisterUserRequest):
 async def login_user(payload: LoginUserRequest):
     email = payload.email.strip().lower()
 
-    with get_connection() as conn:
-        user = conn.execute(
-            "SELECT id, name, email, password_hash FROM users WHERE email = ?",
-            (email,),
-        ).fetchone()
+    if USE_SUPABASE:
+        user = _sb_user_by_email(email)
+    else:
+        with _get_connection() as conn:
+            user = conn.execute(
+                "SELECT id, name, email, password_hash FROM users WHERE email = ?",
+                (email,),
+            ).fetchone()
+        user = dict(user) if user is not None else None
 
     if not user or not verify_password(payload.password, user["password_hash"]):
         raise HTTPException(status_code=401, detail="Invalid email or password.")
@@ -215,11 +259,15 @@ async def get_current_user(authorization: str = Header(default="")):
     token = authorization.split(" ", 1)[1].strip()
     payload = verify_token(token)
 
-    with get_connection() as conn:
-        user = conn.execute(
-            "SELECT id, name, email FROM users WHERE id = ?",
-            (payload["sub"],),
-        ).fetchone()
+    if USE_SUPABASE:
+        user = _sb_user_by_id(payload["sub"])
+    else:
+        with _get_connection() as conn:
+            user = conn.execute(
+                "SELECT id, name, email FROM users WHERE id = ?",
+                (payload["sub"],),
+            ).fetchone()
+        user = dict(user) if user is not None else None
 
     if not user:
         raise HTTPException(status_code=401, detail="User not found.")
@@ -239,15 +287,20 @@ async def get_dashboard(authorization: str = Header(default="")):
     token = authorization.split(" ", 1)[1].strip()
     payload = verify_token(token)
 
-    with get_connection() as conn:
-        user = conn.execute(
-            "SELECT id, name, email FROM users WHERE id = ?",
-            (payload["sub"],),
-        ).fetchone()
-        recent_activity = conn.execute(
-            "SELECT title, ats_score, created_at FROM user_activity WHERE user_id = ? ORDER BY id DESC LIMIT 5",
-            (user["id"],),
-        ).fetchall()
+    if USE_SUPABASE:
+        user = _sb_user_by_id(payload["sub"])
+        recent_activity = _sb_recent_activity(payload["sub"]) if user else []
+    else:
+        with _get_connection() as conn:
+            user = conn.execute(
+                "SELECT id, name, email FROM users WHERE id = ?",
+                (payload["sub"],),
+            ).fetchone()
+            recent_activity = conn.execute(
+                "SELECT title, ats_score, created_at FROM user_activity WHERE user_id = ? ORDER BY id DESC LIMIT 5",
+                (payload["sub"],),
+            ).fetchall() if user else []
+        recent_activity = [dict(row) for row in recent_activity]
 
     if not user:
         raise HTTPException(status_code=401, detail="User not found.")
@@ -270,12 +323,12 @@ async def get_dashboard(authorization: str = Header(default="")):
 
 
 def save_user_activity(user_id: int, title: str, ats_score: float) -> None:
-    with get_connection() as conn:
-        conn.execute(
-            "INSERT INTO user_activity (user_id, title, ats_score) VALUES (?, ?, ?)",
-            (user_id, title, float(ats_score)),
-        )
-        conn.commit()
-
-
-init_auth_db()
+    if USE_SUPABASE:
+        _sb_save_activity(user_id, title, ats_score)
+    else:
+        with _get_connection() as conn:
+            conn.execute(
+                "INSERT INTO user_activity (user_id, title, ats_score) VALUES (?, ?, ?)",
+                (user_id, title, float(ats_score)),
+            )
+            conn.commit()
