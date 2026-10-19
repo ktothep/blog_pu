@@ -115,6 +115,7 @@ def get_authenticated_user(request: object) -> dict:
 
 @route_auth.post("/api/register", status_code=201)
 @limiter.limit("5/hour", error_message="Too many registration attempts. Please try again later.")
+@limiter.limit("20/day", error_message="Too many accounts created from this network today. Please try again tomorrow.")
 async def register_user(request: Request, payload: RegisterUserRequest):
     name = payload.name.strip()
     email = payload.email.strip().lower()
@@ -136,6 +137,7 @@ async def register_user(request: Request, payload: RegisterUserRequest):
 
 @route_auth.post("/api/login")
 @limiter.limit("10/hour", error_message="Too many login attempts. Please try again later.")
+@limiter.limit("40/day", error_message="Too many login attempts from this network today. Please try again tomorrow.")
 async def login_user(request: Request, payload: LoginUserRequest):
     email = payload.email.strip().lower()
     user = user_by_email(email, include_password=True)

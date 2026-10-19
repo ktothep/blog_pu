@@ -158,14 +158,17 @@ def clean_job_text(text: str) -> str:
     if not text:
         return ""
     boilerplate_patterns = re.compile(
-        r"^(apply now|apply on company site|show more|show less|report( this)? job|share( this)?|save(d)? job|"
+        r"^(apply now|apply on company site|apply for this job|apply online|show more|show less|report( this)? job|"
+        r"share( this)?( job)?|save(d)?( this)? job|unsave( this)? job|copy link|"
         r"sign in|join now|see all|easy apply|get matched|log ?in|"
+        r"skip to (main )?content|skip to footer|expand menu|back to (search|results)|view all jobs|"
         r"we use cookies|cookie preferences|manage preferences|accept all|reject all|"
         r"(c|©)\s*\d{4}.*|all rights reserved|privacy policy|terms of service|"
-        r"oldest first|sort by|posted (on|:)|reposted🕧?|day[s]? ago|posted.*ago|"
+        r"oldest first|sort by|posted (on|:)|reposted|day[s]? ago|posted.*ago|"
         r"follow us|contact us|visit website|click here|subscribe|newsletter)$",
         re.IGNORECASE,
     )
+    social_only = {"linkedin", "x", "twitter", "facebook", "whatsapp", "telegram", "email", "print", "share", "careers", "jobs"}
     seen_lines = set()
     cleaned = []
     for line in text.splitlines():
@@ -176,7 +179,7 @@ def clean_job_text(text: str) -> str:
             continue
         if len(line) > 2 and len(set(line)) <= 2:  # banner separators / dots
             continue
-        if boilerplate_patterns.match(line):
+        if boilerplate_patterns.match(line) or line.lower() in social_only:
             continue
         if line.lower() in seen_lines:
             continue
