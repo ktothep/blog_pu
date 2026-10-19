@@ -61,7 +61,7 @@ Your ONLY output must be the complete, rewritten resume in Markdown. No preamble
 - Use standard date format: "Month Year – Month Year" (e.g., "Jan 2022 – Mar 2024") for all positions
 - Spell out abbreviations at least once (e.g., "Search Engine Optimization (SEO)") so both forms are scannable
 - Put the Skills section as a flat comma-separated or line-separated list — not a visual bar chart or rating system
-- Keep contact info on separate lines: Email | Phone | LinkedIn | Location
+- Contact details: reproduce ONLY the contact information actually found in the original resume (Email | Phone | LinkedIn | Location format). If a detail is not present in the original, omit it entirely — NEVER print blank placeholders like "Email: | Phone: |". If the original resume has no contact info at all, skip the contact line completely.
 - Avoid text inside parentheses for job titles — ATS may strip them
 
 ### FORMAT RULES
@@ -331,6 +331,9 @@ async def optimize_resume(
                 style=style,
             )
             log_interaction(job_url or "text-input", filename_for_log, resume_text, "success")
+            warning = None
+            if job_url.strip() and not jd_for_ats:
+                warning = "We couldn't read the job description from that URL, so ATS scoring was skipped. Paste the job description text for accurate scores and keyword analysis."
             return {
                 "status": "success",
                 "markdown_resume": final_text,
@@ -343,6 +346,7 @@ async def optimize_resume(
                 "recommendations": recommendations,
                 "activity_id": activity_id,
                 "style": style,
+                "warning": warning,
             }
 
         if job_description_text.strip():
@@ -423,7 +427,7 @@ async def serve_ui():
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AI Resume Tailor</title>
-    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.tailwindcss.com?plugins=typography"></script>
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-2654835390881247"
      crossorigin="anonymous"></script>
@@ -649,14 +653,15 @@ async def serve_ui():
                     </div>
 
                     <div id="results" class="hidden mt-10 pt-8 border-t border-slate-200 space-y-6">
+                        <div id="scoreWarning" class="hidden bg-amber-50 border border-amber-300 text-amber-800 text-sm rounded-xl p-4"></div>
                         <div class="grid md:grid-cols-3 gap-6">
                             <div class="bg-blue-50 border border-blue-100 rounded-xl p-5">
                                 <div class="text-sm text-blue-700 font-semibold uppercase tracking-wide">ATS: Before → After</div>
-                                <div class="flex items-baseline gap-3 mt-2">
+                                <div class="flex flex-wrap items-baseline gap-x-2 gap-y-1 mt-2">
                                     <span id="atsScoreBefore" class="text-2xl font-semibold text-slate-400">0%</span>
                                     <span class="text-gray-400">→</span>
                                     <span id="atsScore" class="text-3xl font-bold text-blue-900">0%</span>
-                                    <span id="atsDelta" class="hidden text-sm font-bold text-emerald-600"></span>
+                                    <span id="atsDelta" class="hidden text-xs font-bold text-emerald-600"></span>
                                 </div>
                             </div>
                             <div class="bg-emerald-50 border border-emerald-100 rounded-xl p-5">
@@ -696,7 +701,7 @@ async def serve_ui():
                                 </div>
                                 <div class="bg-blue-50 p-4 rounded-xl border border-blue-100">
                                     <h3 class="text-xs font-bold text-blue-700 uppercase tracking-wide mb-3">Tailored <span id="styleBadge" class="hidden bg-blue-600 text-white rounded-full px-2 py-0.5 text-[10px] align-middle ml-1"></span></h3>
-                                    <div id="markdownOutput" class="prose max-w-none text-sm"></div>
+                                    <div id="markdownOutput" class="prose prose-sm max-w-none text-slate-800"></div>
                                     <p class="text-[11px] text-amber-600 mt-3">Highlighted terms are keywords matched with the job description.</p>
                                 </div>
                             </div>
@@ -714,7 +719,7 @@ async def serve_ui():
                                     <h3 id="extrasTitle" class="text-xs font-bold text-slate-800 uppercase tracking-wide"></h3>
                                     <button type="button" id="extrasCopyBtn" class="text-xs text-blue-700 hover:underline">Copy</button>
                                 </div>
-                                <div id="extrasContent" class="prose max-w-none text-sm mt-3"></div>
+                                <div id="extrasContent" class="prose prose-sm max-w-none text-slate-800 mt-3"></div>
                             </div>
                         </div>
 
@@ -1108,9 +1113,10 @@ async def serve_ui():
 
         function highlightKeywords(mdSource, keywords) {
             let out = mdSource;
+            const BS = String.fromCharCode(92); // backslash, kept escape-free on purpose
             keywords.slice(0, 40).forEach(kw => {
-                const safe = kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-                out = out.replace(new RegExp(`(^|[^\\w>])(${safe})(?=$|[^\\w<])`, 'gi'), `$1<mark class="bg-amber-200 text-slate-900 rounded px-0.5">$2</mark>`);
+                const safe = kw.replace(/[^a-zA-Z0-9]/g, m => BS + m);
+                out = out.replace(new RegExp('(^|[^' + BS + 'w>])(' + safe + ')(?=$|[^' + BS + 'w<])', 'gi'), '$1<mark class="bg-amber-200 text-slate-900 rounded px-0.5">$2</mark>');
             });
             return out;
         }
@@ -1118,6 +1124,14 @@ async def serve_ui():
         function renderResult(data) {
             lastResult = data;
             document.getElementById('results').classList.remove('hidden');
+
+            const warn = document.getElementById('scoreWarning');
+            if (data.warning) {
+                warn.textContent = data.warning;
+                warn.classList.remove('hidden');
+            } else {
+                warn.classList.add('hidden');
+            }
 
             const before = data.ats_score ?? 0;
             const after = data.ats_score_tailored;
