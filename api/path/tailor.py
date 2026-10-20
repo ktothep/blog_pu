@@ -1341,8 +1341,21 @@ async def serve_ui():
                 if (data.style && document.getElementById('styleSelect').querySelector(`option[value="${data.style}"]`)) {
                     document.getElementById('styleSelect').value = data.style;
                 }
-                document.getElementById('optimizer').scrollIntoView({ behavior: 'smooth' });
-                showToast('Version loaded into the form — press Optimize Resume to regenerate it.', 'success');
+                // Render the stored version so the export/copy/print buttons work on it.
+                // Keyword panels were not stored historically, so they show as unavailable.
+                renderResult({
+                    markdown_resume: data.markdown_resume || '',
+                    original_resume_text: data.original_resume || '',
+                    ats_score: data.ats_score,
+                    ats_score_tailored: data.ats_score_tailored,
+                    matched_keywords: [],
+                    missing_keywords: [],
+                    coverage_counts: {},
+                    recommendations: [],
+                    activity_id: data.id,
+                    style: data.style,
+                });
+                showToast('Older version loaded — export buttons below now work on it. Press Optimize to regenerate a fresh tailored copy.', 'success');
             } catch (e) {
                 showToast(e.name === 'TypeError' ? networkErrorMessage() : e.message, 'error');
             } finally {
