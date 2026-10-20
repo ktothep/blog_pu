@@ -821,23 +821,7 @@ async def serve_ui():
                 dashboardPanel.classList.remove('hidden');
                 dashboardUser.textContent = user.name;
                 loadUserGadgets();
-                fetch('/api/dashboard', {
-                    headers: { Authorization: `Bearer ${token}` }
-                }).then(async response => {
-                    if (!response.ok) return;
-                    const data = await response.json();
-                    const activity = data.recent_activity || [];
-                    dashboardActivity.innerHTML = activity.length ? activity.map(item => `
-                        <div class="border border-blue-200 rounded-lg p-2 bg-white">
-                            <div class="font-medium">${item.title}</div>
-                            <div class="text-xs text-blue-700">ATS: ${item.ats_score}%</div>
-                            <div class="text-xs text-gray-600">${new Date(item.created_at).toLocaleString()}</div>
-                        </div>
-                    `).join('') : '<div class="text-gray-600">No optimizations yet.</div>';
-                }).catch(() => {
-                    dashboardActivity.innerHTML = '<div class="text-gray-600">No optimizations yet.</div>';
-                    showToast('Could not refresh your dashboard. Your saved activity may be out of date.', 'warn');
-                });
+                refreshDashboard();
                 return;
             }
             localStorage.removeItem(tokenKey);
@@ -1071,21 +1055,7 @@ async def serve_ui():
                 const currentToken = localStorage.getItem('resumeTailorToken');
                 if (currentToken) {
                     try {
-                        const dashboardResponse = await fetch('/api/dashboard', {
-                            headers: { Authorization: `Bearer ${currentToken}` }
-                        });
-                        if (dashboardResponse.ok) {
-                            const dashboardData = await dashboardResponse.json();
-                            const dashboardActivity = document.getElementById('dashboardActivity');
-                            const activity = dashboardData.recent_activity || [];
-                            dashboardActivity.innerHTML = activity.length ? activity.map(item => `
-                                <div class="border border-blue-200 rounded-lg p-2 bg-white">
-                                    <div class="font-medium">${item.title}</div>
-                                    <div class="text-xs text-blue-700">ATS: ${item.ats_score}%</div>
-                                    <div class="text-xs text-gray-600">${new Date(item.created_at).toLocaleString()}</div>
-                                </div>
-                            `).join('') : '<div class="text-gray-600">No optimizations yet.</div>';
-                        }
+                        await refreshDashboard();
                     } catch {
                         showToast('Saved your optimization, but could not refresh the dashboard Activity.', 'warn');
                     }
@@ -1299,6 +1269,34 @@ async def serve_ui():
             }
         });
 
+        function renderDashboardActivity(activity) {
+            const el = document.getElementById('dashboardActivity');
+            el.innerHTML = activity.length ? activity.map(item => `
+                <div class="border border-blue-200 rounded-lg p-2 bg-white flex items-center justify-between gap-2">
+                    <div class="min-w-0">
+                        <div class="font-medium truncate">${escHtml(item.title || 'Optimization')}</div>
+                        <div class="text-xs text-blue-700">ATS: ${item.ats_score ?? 0}%${item.ats_score_tailored != null ? ' → ' + item.ats_score_tailored + '%' : ''}</div>
+                        <div class="text-xs text-gray-600">${new Date(item.created_at).toLocaleString()}</div>
+                    </div>
+                    <div class="shrink-0">
+                        <button type="button" data-dopen="${item.id}" class="dashOpen bg-blue-50 text-blue-700 text-xs font-semibold px-2 py-1.5 rounded-md hover:bg-blue-100">Open</button>
+                    </div>
+                </div>
+            `).join('') : '<div class="text-gray-600">No optimizations yet.</div>';
+            el.querySelectorAll('.dashOpen').forEach(b => b.addEventListener('click', () => loadVersion(b.dataset.dopen)));
+        }
+
+        async function refreshDashboard() {
+            const token = localStorage.getItem(tokenKey);
+            if (!token) return;
+            try {
+                const response = await fetch('/api/dashboard', { headers: { Authorization: `Bearer ${token}` } });
+                if (response.ok) renderDashboardActivity((await response.json()).recent_activity || []);
+            } catch {
+                document.getElementById('dashboardActivity').innerHTML = '<div class="text-gray-600">No optimizations yet.</div>';
+            }
+        }
+
         async function loadHistory() {
             const token = localStorage.getItem('resumeTailorToken');
             const list = document.getElementById('historyList');
@@ -1368,6 +1366,7 @@ async def serve_ui():
                 await fetch(`/api/history/${id}`, { method: 'DELETE', headers: authHeaders() });
                 showToast('Version deleted.', 'info');
                 loadHistory();
+                refreshDashboard();
             } catch {
                 showToast('Could not delete this version.', 'error');
             }
