@@ -476,31 +476,11 @@ async def serve_ui():
                             </div>
                         </div>
 
-                        <div class="rounded-2xl border border-white/10 bg-white/5 p-5 shadow-xl">
-                            <div class="rounded-xl border border-blue-400/20 bg-slate-900/80 p-4">
-                                <div class="flex items-center justify-between text-xs uppercase tracking-[0.15em] text-slate-400">
-                                    <span>Application fit</span>
-                                    <span>AI score</span>
-                                </div>
-                                <div class="mt-5 text-4xl font-black text-blue-300">92%</div>
-                                <div class="mt-3 h-2 w-full rounded-full bg-slate-700">
-                                    <div class="h-2 w-[92%] rounded-full bg-gradient-to-r from-blue-500 to-cyan-400"></div>
-                                </div>
-                                <div class="mt-5 space-y-3 text-sm text-slate-200">
-                                    <div class="flex items-center justify-between rounded-lg bg-slate-800/80 px-3 py-2">
-                                        <span>Leadership</span>
-                                        <span class="text-emerald-300">Matched</span>
-                                    </div>
-                                    <div class="flex items-center justify-between rounded-lg bg-slate-800/80 px-3 py-2">
-                                        <span>Python / SQL</span>
-                                        <span class="text-emerald-300">Matched</span>
-                                    </div>
-                                    <div class="flex items-center justify-between rounded-lg bg-slate-800/80 px-3 py-2">
-                                        <span>Stakeholder communication</span>
-                                        <span class="text-amber-300">Improved</span>
-                                    </div>
-                                </div>
-                            </div>
+                        <div class="rounded-2xl border border-white/10 bg-white/5 p-3 shadow-xl">
+                            <img src="/assets/demo.gif" alt="Walkthrough of AI Resume Tailor: paste a job description, paste your resume, click Optimize, and get ATS scores, keyword coverage and a tailored before/after comparison"
+                                 class="w-full rounded-xl border border-white/10 bg-slate-900"
+                                 width="800" height="712" loading="lazy">
+                            <p class="mt-2 text-center text-xs text-slate-400">A 15-second walkthrough of the real product — paste a job, optimize, export.</p>
                         </div>
                     </div>
                 </section>
